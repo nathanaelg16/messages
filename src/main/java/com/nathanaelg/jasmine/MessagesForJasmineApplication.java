@@ -17,7 +17,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import javax.sql.rowset.CachedRowSet;
 import javax.validation.Valid;
-import java.sql.SQLException;
 import java.util.List;
 
 import static lombok.AccessLevel.PACKAGE;
@@ -55,16 +54,12 @@ public class MessagesForJasmineApplication {
         ResponseEntity responseEntity;
         String recipientUserName = messageUpdateBean.getRecipient();
         if (users.findUsername(recipientUserName)) {
-            try {
-                String senderUserName = sender.getUsername();
-                if (!recipientUserName.equals(senderUserName)) {
-                    Database.setMessage(new Message(recipientUserName, senderUserName, messageUpdateBean.getTitle(), messageUpdateBean.getMessage(), TimeStamp.getCurrentTimeStamp()));
-                    responseEntity = new ResponseEntity<>(new MessageResponse(TimeStamp.getCurrentTimeStamp(), HttpStatus.ACCEPTED, "Your message has been accepted."), HttpStatus.ACCEPTED);
-                } else {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Recipient cannot be the same as the sender.");
-                }
-            } catch (SQLException | ResponseStatusException ex) {
-                throw ex;
+            String senderUserName = sender.getUsername();
+            if (!recipientUserName.equals(senderUserName)) {
+                Database.setMessage(new Message(-1, recipientUserName, senderUserName, messageUpdateBean.getTitle(), messageUpdateBean.getMessage(), TimeStamp.getCurrentTimeStamp(), messageUpdateBean.getPriority()));
+                responseEntity = new ResponseEntity<>(new MessageResponse(TimeStamp.getCurrentTimeStamp(), HttpStatus.ACCEPTED, "Your message has been accepted."), HttpStatus.ACCEPTED);
+            } else {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Recipient cannot be the same as the sender.");
             }
         } else {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unable to find recipient.");
@@ -76,7 +71,7 @@ public class MessagesForJasmineApplication {
     public ResponseEntity changePriority(@AuthenticationPrincipal final User user, @RequestParam("message-id") int id, @RequestParam("priority") int priority) throws Exception {
         Message message = Database.getMessage(id);
         if (user.getUsername().equals(message.getSender())) {
-            Database.executeUpdate("UPDATE " + Database.Tables.MESSAGE + " SET priority = ? WHERE id = ?;", priority, id);
+            Database.executeUpdate("UPDATE " + Database.Tables.MESSAGES + " SET priority = ? WHERE id = ?;", priority, id);
             return ResponseEntity.status(HttpStatus.OK).build();
         } else {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Priority may only be changed by the original sender");
@@ -92,27 +87,30 @@ public class MessagesForJasmineApplication {
         return messages;
     }
 
-    @GetMapping("/delete-read-messages")
-    public ResponseEntity deleteReadMessages(@AuthenticationPrincipal User user) throws Exception {
-        Database.executeUpdate("DELETE FROM " + Database.Tables.MESSAGE + " WHERE sender = ? AND msgRead = 1;", user.getUsername());
-        return ResponseEntity.status(HttpStatus.OK).build();
-    }
-
-    @GetMapping("/delete-message")
+    @DeleteMapping("/delete-message")
     public ResponseEntity deleteMessage(@AuthenticationPrincipal final User user, @RequestParam("message-id") final int messageID) throws Exception {
         Message message = Database.getMessage(messageID);
         if (user.getUsername().equals(message.getSender())) {
-            Database.executeUpdate("DELETE FROM " + Database.Tables.MESSAGE + " WHERE id = ?;", messageID);
+            Database.archiveMessage(messageID, true);
             return ResponseEntity.status(HttpStatus.OK).build();
         } else {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Only message sender may delete this message");
         }
     }
 
-
-    public ResponseEntity editMessage(@AuthenticationPrincipal final User user, @RequestParam("message-id") final int messageID, @RequestBody @Valid final MessageUpdateBean message) throws Exception {
+    @PostMapping("/edit-message")
+    public ResponseEntity editMessage(@AuthenticationPrincipal final User user, @RequestParam("message-id") final int messageID, @RequestBody @Valid final MessageUpdateBean messageUpdate) throws Exception {
         if (user.getUsername().equals(Database.getMessageSender(messageID))) {
-            Database.updateMessage(message);
+            if (Database.checkExists(Database.Tables.MESSAGES, "id = ? AND msgRead = ?", messageID, true)) {
+                throw new ResponseStatusException(HttpStatus.NOT_MODIFIED, "Message recipient has already read this message.");
+            }
+            Message newMessage = Database.getMessage(messageID);
+            newMessage.setTitle(messageUpdate.getTitle());
+            newMessage.setMessage(messageUpdate.getMessage());
+            newMessage.setPriority(messageUpdate.getPriority());
+            newMessage.setTimestamp(TimeStamp.getCurrentTimeStamp());
+            Database.updateMessage(newMessage);
+            return ResponseEntity.status(HttpStatus.OK).build();
         } else {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Only message sender may edit this message");
         }
@@ -122,7 +120,7 @@ public class MessagesForJasmineApplication {
     public MessageStatusBean retrieveMessageStatus(@AuthenticationPrincipal final User user, @RequestParam("message-id") final int messageID) throws Exception {
         Message message = Database.getMessage(messageID);
         if (user.getUsername().equals(message.getSender())) {
-            CachedRowSet resultSet = Database.executeQuery("SELECT title, recipient, msgRead, msgReadTs FROM " + Database.Tables.MESSAGE + " WHERE id = ?;", messageID);
+            CachedRowSet resultSet = Database.executeQuery("SELECT title, recipient, msgRead, msgReadTs FROM " + Database.Tables.MESSAGES + " WHERE id = ?;", messageID);
             resultSet.next();
             return new MessageStatusBean(resultSet.getString("title"),
                     resultSet.getString("recipient"),

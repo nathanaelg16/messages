@@ -1,5 +1,6 @@
 package com.nathanaelg.jasmine.messages;
 
+import javax.annotation.Nullable;
 import javax.validation.constraints.NotNull;
 
 public class MessageUpdateBean {
@@ -13,7 +14,8 @@ public class MessageUpdateBean {
     @NotNull
     private String message;
 
-    private int priority;
+    @Nullable
+    private Integer priority;
 
     protected MessageUpdateBean() {
 
@@ -43,11 +45,11 @@ public class MessageUpdateBean {
         this.recipient = recipient;
     }
 
-    public int getPriority() {
+    public Integer getPriority() {
         return priority;
     }
 
-    public void setPriority(int priority) {
+    public void setPriority(Integer priority) {
         this.priority = priority;
     }
 }

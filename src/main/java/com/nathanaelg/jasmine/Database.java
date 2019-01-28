@@ -17,16 +17,19 @@ public class Database {
     private static final String DATABASE = "jasmine"; //Name of database
     private static final String PORT = "3306"; //Default MySQL port
     private static final String OPTIONS = "?verifyServerCertificate=false&useSSL=true"; //Specify options here
-    private static final String CONNECTIONURL = ("jdbc:mysql://" + HOST + "/"
+    public static final String CONNECTIONURL = ("jdbc:mysql://" + HOST + "/"
             + DATABASE + OPTIONS); //Connection URL used with DriverManager.
     //Specifies the Java Database Connector being used, which is the MySQL connector
-    private static final String USERNAME = "jasmine_user";
-    private static final String PASSWORD = "Jasmine6462038941";
+    public static final String USERNAME = "jasmine_user";
+    public static final String PASSWORD = "Jasmine6462038941";
+    //TODO: Change the public fields above to private
 
     public enum Tables {
-        MESSAGE ("message"),
+        ARCHIVED_MESSAGES ("archived_messages"),
+        MESSAGES("messages"),
         TOKENS ("tokens"),
-        USERS ("users");
+        USERS ("users"),
+        EDITED_MESSAGE ("edited_message_originals");
 
         private String field;
 
@@ -47,7 +50,7 @@ public class Database {
     static void setMessage(Message messageBean) throws Exception {
         Connection dbConnection =
                 DriverManager.getConnection(CONNECTIONURL, USERNAME, PASSWORD);
-        try (PreparedStatement statement = dbConnection.prepareStatement("INSERT INTO " + Tables.MESSAGE + " SET recipient = ?, sender = ?, title = ?, message = ?, ts = ?, msgRead = 0, priority = ?;")) {
+        try (PreparedStatement statement = dbConnection.prepareStatement("INSERT INTO " + Tables.MESSAGES + " SET recipient = ?, sender = ?, title = ?, message = ?, ts = ?, msgRead = 0, priority = ?;")) {
             statement.setString(1, messageBean.getRecipient());
             statement.setString(2, messageBean.getSender());
             statement.setString(3, messageBean.getTitle());
@@ -59,32 +62,49 @@ public class Database {
         dbConnection.close();
     }
 
+    static void updateMessage(Message message) throws Exception {
+        executeQuery("SELECT * INTO " + Tables.EDITED_MESSAGE + " FROM " + Tables.MESSAGES + " WHERE id = ?;", message.getID());
+        Connection dbConnection = DriverManager.getConnection(CONNECTIONURL, USERNAME, PASSWORD);
+        try (PreparedStatement statement = dbConnection.prepareStatement("UPDATE " + Tables.MESSAGES + " SET title = ?, message = ?, ts = ?, priority = ?, edited = 1 WHERE id = ?;")) {
+            statement.setString(1, message.getTitle());
+            statement.setString(2, message.getMessage());
+            statement.setString(3, message.getTimestamp());
+            statement.setInt(4, message.getPriority());
+            statement.setInt(5, message.getID());
+            statement.executeUpdate();
+        }
+        dbConnection.close();
+    }
+
+    static void archiveMessage(int messageID, boolean deleteAfter) throws Exception {
+        executeUpdate("SELECT * INTO " + Tables.ARCHIVED_MESSAGES + " FROM " + Tables.MESSAGES + " WHERE id = ?;", messageID);
+        executeUpdate("DELETE FROM " + Tables.MESSAGES + " WHERE id = ?;", messageID);
+    }
+
     static Message getMessage(String recipient) throws Exception {
         Message message;
-        Integer id;
 
         Connection dbConnection = DriverManager.getConnection(CONNECTIONURL, USERNAME, PASSWORD);
 
-        PreparedStatement statement = dbConnection.prepareStatement("SELECT * FROM " + Tables.MESSAGE + " WHERE recipient = ? AND msgRead = 0 ORDER BY priority DESC, id ASC LIMIT 1;");
+        PreparedStatement statement = dbConnection.prepareStatement("SELECT * FROM " + Tables.MESSAGES + " WHERE recipient = ? AND msgRead = 0 ORDER BY priority DESC, id ASC LIMIT 1;");
         statement.setString(1, recipient);
         ResultSet rs = statement.executeQuery();
         if (rs.first()) {
-            id = rs.getInt("id");
-            message = new Message(recipient,
+            message = new Message(rs.getInt("id"), recipient,
                     rs.getString("sender"),
                     rs.getString("title"),
                     rs.getString("message"),
                     rs.getString("ts"));
         } else {
             statement.close();
-            return new Message(null, null,"No messages", "There are no more messages at this time.", TimeStamp.getCurrentTimeStamp());
+            return new Message(-1, null, null,"No messages", "There are no more messages at this time.", TimeStamp.getCurrentTimeStamp());
         }
         rs.close();
         statement.close();
 
-        try (PreparedStatement statement2 = dbConnection.prepareStatement("UPDATE " + Tables.MESSAGE + " SET msgRead = 1, msgReadTs = ? WHERE id = ?;")) {
+        try (PreparedStatement statement2 = dbConnection.prepareStatement("UPDATE " + Tables.MESSAGES + " SET msgRead = 1, msgReadTs = ? WHERE id = ?;")) {
             statement2.setString(1, TimeStamp.getCurrentTimeStamp());
-            statement2.setInt(2, id);
+            statement2.setInt(2, message.getID());
             statement2.executeUpdate();
         }
 
@@ -93,7 +113,7 @@ public class Database {
     }
 
     static String getMessageSender(int messageID) throws Exception {
-        try (ResultSet rs = executeQuery("SELECT sender FROM " + Tables.MESSAGE + " WHERE id = ?;", messageID)) {
+        try (ResultSet rs = executeQuery("SELECT sender FROM " + Tables.MESSAGES + " WHERE id = ?;", messageID)) {
             if (rs.next()) {
                 return rs.getString(1);
             } else {
@@ -104,7 +124,7 @@ public class Database {
 
     static List<SummarizedMessage> getAllSentMessages(String sender) throws Exception {
         ArrayList<SummarizedMessage> messages = new ArrayList<>();
-        CachedRowSet resultSet = executeQuery("SELECT id, title, msgRead, priority FROM " + Tables.MESSAGE + " WHERE sender = ?;", sender);
+        CachedRowSet resultSet = executeQuery("SELECT id, title, msgRead, priority FROM " + Tables.MESSAGES + " WHERE sender = ?;", sender);
         while (resultSet.next()) {
             messages.add(new SummarizedMessage(resultSet.getInt(1), resultSet.getString(2), resultSet.getBoolean(3), resultSet.getInt(4)));
         }
@@ -112,9 +132,9 @@ public class Database {
     }
 
     static Message getMessage(int messageID) throws Exception {
-        CachedRowSet resultSet = executeQuery("SELECT * FROM " + Tables.MESSAGE + " WHERE id = ?;", messageID);
+        CachedRowSet resultSet = executeQuery("SELECT * FROM " + Tables.MESSAGES + " WHERE id = ?;", messageID);
         if (resultSet.next()) {
-            return new Message(resultSet.getString("recipient"),
+            return new Message(resultSet.getInt("id"), resultSet.getString("recipient"),
                     resultSet.getString("sender"),
                     resultSet.getString("title"),
                     resultSet.getString("message"),

@@ -1,11 +1,11 @@
 package com.nathanaelg.jasmine.messages;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-
-import javax.validation.constraints.NotNull;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class Message {
 
+    private int id;
     private String recipient;
     private String sender;
     private String title;
@@ -13,16 +13,18 @@ public class Message {
     private String timestamp;
     private int priority;
 
-    public Message(String recipient, String sender, String title, String message, String timestamp, @NotNull Integer priority) {
+    public Message(int id, String recipient, String sender, String title, String message, String timestamp, Integer priority) {
+        this.id = id;
         this.title = title;
         this.message = message;
         this.timestamp = timestamp;
         this.sender = sender;
         this.recipient = recipient;
-        this.priority = priority;
+        this.priority = (priority == null) ? 0 : priority;
     }
 
-    public Message(String recipient, String sender, String title, String message, String timestamp) {
+    public Message(int id, String recipient, String sender, String title, String message, String timestamp) {
+        this.id = id;
         this.recipient = recipient;
         this.sender = sender;
         this.title = title;
@@ -31,16 +33,44 @@ public class Message {
         this.priority = 0;
     }
 
+    @JsonIgnore
+    public int getID() {
+        return id;
+    }
+
+    @JsonIgnore
+    public void setID(int id) {
+        this.id = id;
+    }
+
+    @JsonProperty
     public String getTitle() {
         return title;
     }
 
+    @JsonIgnore
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    @JsonProperty
     public String getMessage() {
         return message;
     }
 
+    @JsonIgnore
+    public void setMessage(String message) {
+        this.message = message;
+    }
+
+    @JsonProperty
     public String getTimestamp() {
         return timestamp;
+    }
+
+    @JsonIgnore
+    public void setTimestamp(String timestamp) {
+        this.timestamp = timestamp;
     }
 
     @JsonIgnore
@@ -49,13 +79,28 @@ public class Message {
     }
 
     @JsonIgnore
+    public void setPriority(Integer priority) {
+        this.priority = (priority == null) ? 0 : priority;
+    }
+
+    @JsonIgnore
     public String getSender() {
         return sender;
     }
 
     @JsonIgnore
+    public void setSender(String sender) {
+        this.sender = sender;
+    }
+
+    @JsonIgnore
     public String getRecipient() {
         return recipient;
+    }
+
+    @JsonIgnore
+    public void setRecipient(String recipient) {
+        this.recipient = recipient;
     }
 
     @JsonIgnore
