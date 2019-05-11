@@ -3,7 +3,10 @@ package com.nathanaelg.jasmine;
 import com.nathanaelg.jasmine.date.TimeStamp;
 import com.nathanaelg.jasmine.messages.Message;
 import com.nathanaelg.jasmine.messages.SummarizedMessage;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import javax.sql.rowset.CachedRowSet;
@@ -12,24 +15,24 @@ import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 
+@Service
 public class Database {
-    private static final String HOST = "nathanaelg.com"; //temp development host
-    private static final String DATABASE = "jasmine"; //Name of database
-    private static final String PORT = "3306"; //Default MySQL port
-    private static final String OPTIONS = "?verifyServerCertificate=false&useSSL=true"; //Specify options here
-    public static final String CONNECTIONURL = ("jdbc:mysql://" + HOST + "/"
-            + DATABASE + OPTIONS); //Connection URL used with DriverManager.
-    //Specifies the Java Database Connector being used, which is the MySQL connector
-    public static final String USERNAME = "jasmine_user";
-    public static final String PASSWORD = "Jasmine6462038941";
-    //TODO: Change the public fields above to private
+    private final String CONNECTIONURL; //Connection URL used with DriverManager.
+    private final String USERNAME;
+    private final String PASSWORD;
+
+    @Autowired
+    public Database(Environment env) {
+        CONNECTIONURL = env.getProperty("spring.datasource.url");
+        USERNAME = env.getProperty("spring.datasource.username");
+        PASSWORD = env.getProperty("spring.datasource.passwordHash");
+    }
 
     public enum Tables {
         ARCHIVED_MESSAGES ("archived_messages"),
         MESSAGES("messages"),
         TOKENS ("tokens"),
-        USERS ("users"),
-        EDITED_MESSAGE ("edited_message_originals");
+        USERS ("users");
 
         private String field;
 
@@ -47,7 +50,7 @@ public class Database {
         }
     }
 
-    static void setMessage(Message messageBean) throws Exception {
+    void setMessage(Message messageBean) throws Exception {
         Connection dbConnection =
                 DriverManager.getConnection(CONNECTIONURL, USERNAME, PASSWORD);
         try (PreparedStatement statement = dbConnection.prepareStatement("INSERT INTO " + Tables.MESSAGES + " SET recipient = ?, sender = ?, title = ?, message = ?, ts = ?, msgRead = 0, priority = ?;")) {
@@ -62,26 +65,13 @@ public class Database {
         dbConnection.close();
     }
 
-    static void updateMessage(Message message) throws Exception {
-        executeQuery("SELECT * INTO " + Tables.EDITED_MESSAGE + " FROM " + Tables.MESSAGES + " WHERE id = ?;", message.getID());
-        Connection dbConnection = DriverManager.getConnection(CONNECTIONURL, USERNAME, PASSWORD);
-        try (PreparedStatement statement = dbConnection.prepareStatement("UPDATE " + Tables.MESSAGES + " SET title = ?, message = ?, ts = ?, priority = ?, edited = 1 WHERE id = ?;")) {
-            statement.setString(1, message.getTitle());
-            statement.setString(2, message.getMessage());
-            statement.setString(3, message.getTimestamp());
-            statement.setInt(4, message.getPriority());
-            statement.setInt(5, message.getID());
-            statement.executeUpdate();
-        }
-        dbConnection.close();
-    }
-
-    static void archiveMessage(int messageID, boolean deleteAfter) throws Exception {
+    void archiveMessage(int messageID, boolean deleteAfter) throws Exception {
         executeUpdate("SELECT * INTO " + Tables.ARCHIVED_MESSAGES + " FROM " + Tables.MESSAGES + " WHERE id = ?;", messageID);
+        executeUpdate("UPDATE " + Tables.ARCHIVED_MESSAGES + " SET deleted = ? WHERE id = ?;", deleteAfter, messageID);
         executeUpdate("DELETE FROM " + Tables.MESSAGES + " WHERE id = ?;", messageID);
     }
 
-    static Message getMessage(String recipient) throws Exception {
+    Message getMessage(String recipient) throws Exception {
         Message message;
 
         Connection dbConnection = DriverManager.getConnection(CONNECTIONURL, USERNAME, PASSWORD);
@@ -112,7 +102,7 @@ public class Database {
         return message;
     }
 
-    static String getMessageSender(int messageID) throws Exception {
+    String getMessageSender(int messageID) throws Exception {
         try (ResultSet rs = executeQuery("SELECT sender FROM " + Tables.MESSAGES + " WHERE id = ?;", messageID)) {
             if (rs.next()) {
                 return rs.getString(1);
@@ -122,7 +112,7 @@ public class Database {
         }
     }
 
-    static List<SummarizedMessage> getAllSentMessages(String sender) throws Exception {
+    List<SummarizedMessage> getAllSentMessages(String sender) throws Exception {
         ArrayList<SummarizedMessage> messages = new ArrayList<>();
         CachedRowSet resultSet = executeQuery("SELECT id, title, msgRead, priority FROM " + Tables.MESSAGES + " WHERE sender = ?;", sender);
         while (resultSet.next()) {
@@ -131,10 +121,18 @@ public class Database {
         return messages;
     }
 
-    static Message getMessage(int messageID) throws Exception {
-        CachedRowSet resultSet = executeQuery("SELECT * FROM " + Tables.MESSAGES + " WHERE id = ?;", messageID);
-        if (resultSet.next()) {
-            return new Message(resultSet.getInt("id"), resultSet.getString("recipient"),
+    Message getMessage(int messageID) throws Exception {
+        Message message;
+
+        Connection dbConnection = DriverManager.getConnection(CONNECTIONURL, USERNAME, PASSWORD);
+
+        PreparedStatement statement = dbConnection.prepareStatement("SELECT * FROM " + Tables.MESSAGES + " WHERE id = ?;");
+        statement.setInt(1, messageID);
+
+        ResultSet resultSet = statement.executeQuery();
+        if (resultSet.first()) {
+            message = new Message(resultSet.getInt("id"),
+                    resultSet.getString("recipient"),
                     resultSet.getString("sender"),
                     resultSet.getString("title"),
                     resultSet.getString("message"),
@@ -142,6 +140,10 @@ public class Database {
         } else {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unable to find message with given message id");
         }
+        resultSet.close();
+        statement.close();
+        dbConnection.close();
+        return message;
     }
 
     /**
@@ -153,7 +155,7 @@ public class Database {
      * @param args Query values used for the @command, in order of appearance from left to right
      * @throws Exception SQLException or general Exceptions
      */
-    public static void executeUpdate(String command, Object... args) throws Exception {
+    public void executeUpdate(String command, Object... args) throws Exception {
         Connection dbConnection = DriverManager.getConnection(CONNECTIONURL, USERNAME, PASSWORD);
         try (PreparedStatement statement = dbConnection.prepareStatement(command)) {
             for (int i = 1; i <= args.length; i++) {
@@ -164,7 +166,7 @@ public class Database {
         dbConnection.close();
     }
 
-    public static CachedRowSet executeQuery(String query, Object... args) throws SQLException {
+    public CachedRowSet executeQuery(String query, Object... args) throws SQLException {
         Connection dbConnection = DriverManager.getConnection(CONNECTIONURL, USERNAME, PASSWORD);
         try (PreparedStatement statement = dbConnection.prepareStatement(query)) {
             for (int i = 1; i <= args.length; i++) {
@@ -179,7 +181,7 @@ public class Database {
         }
     }
 
-    public static boolean checkExists(Database.Tables table, String whereClause, Object... args) throws SQLException {
+    public boolean checkExists(Database.Tables table, String whereClause, Object... args) throws SQLException {
         ResultSet result;
         int exists;
         if (whereClause != null) {
@@ -192,6 +194,4 @@ public class Database {
         result.close();
         return exists == 1;
     }
-
-
 }

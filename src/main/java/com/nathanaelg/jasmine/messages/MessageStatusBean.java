@@ -11,19 +11,24 @@ public class MessageStatusBean {
     private String recipient;
 
     @NotNull
+    private int priority;
+
+    @NotNull
     private boolean read;
 
     private String readTimeStamp;
 
-    public MessageStatusBean(@NotNull String title, @NotNull String recipient, @NotNull boolean read) {
+    public MessageStatusBean(@NotNull String title, @NotNull String recipient, @NotNull int priority, @NotNull boolean read) {
         this.title = title;
         this.recipient = recipient;
+        this.priority = priority;
         this.read = read;
     }
 
-    public MessageStatusBean(@NotNull String title, @NotNull String recipient, @NotNull boolean read, String readTimeStamp) {
+    public MessageStatusBean(@NotNull String title, @NotNull String recipient, @NotNull int priority, @NotNull boolean read, String readTimeStamp) {
         this.title = title;
         this.recipient = recipient;
+        this.priority = priority;
         this.read = read;
         this.readTimeStamp = readTimeStamp;
     }
@@ -34,6 +39,10 @@ public class MessageStatusBean {
 
     public String getRecipient() {
         return recipient;
+    }
+
+    public int getPriority() {
+        return priority;
     }
 
     public boolean isRead() {

@@ -93,7 +93,7 @@ public class Message {
         this.sender = sender;
     }
 
-    @JsonIgnore
+    @JsonProperty
     public String getRecipient() {
         return recipient;
     }

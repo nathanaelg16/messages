@@ -19,10 +19,12 @@ import java.util.Optional;
 public class DatabaseUsers implements UserCrudService {
 
     private final PasswordEncoder passwordEncoder;
+    private final Database database;
 
     @Autowired
-    public DatabaseUsers(PasswordEncoder passwordEncoder) {
+    public DatabaseUsers(PasswordEncoder passwordEncoder, Database database) {
         this.passwordEncoder = passwordEncoder;
+        this.database = database;
     }
 
     @Override
@@ -30,7 +32,7 @@ public class DatabaseUsers implements UserCrudService {
         String username = user.getUsername();
         String encodedPassword = passwordEncoder.encode(user.getPassword());
         try {
-            Database.executeUpdate("INSERT INTO " + Database.Tables.USERS + " VALUES (null, ?, ?);", username, encodedPassword);
+            database.executeUpdate("INSERT INTO " + Database.Tables.USERS + " VALUES (null, ?, ?);", username, encodedPassword);
         } catch (Exception e) {
             e.printStackTrace();
             return null;
@@ -41,7 +43,7 @@ public class DatabaseUsers implements UserCrudService {
     @Override
     public Optional<User> find(@NotNull final Integer id) {
         try {
-            ResultSet resultSet = Database.executeQuery("SELECT * FROM " + Database.Tables.USERS + " WHERE id = ?;", id);
+            ResultSet resultSet = database.executeQuery("SELECT * FROM " + Database.Tables.USERS + " WHERE id = ?;", id);
             if (resultSet.next()) {
                 return Optional.of(new User(resultSet.getInt("id"), resultSet.getString("username"), resultSet.getString("pass")));
             } else {
@@ -56,7 +58,7 @@ public class DatabaseUsers implements UserCrudService {
     @Override
     public Optional<User> findByUsername(@NotNull String username) {
         try {
-            ResultSet resultSet = Database.executeQuery("SELECT * FROM " + Database.Tables.USERS + " WHERE username = ?;", username);
+            ResultSet resultSet = database.executeQuery("SELECT * FROM " + Database.Tables.USERS + " WHERE username = ?;", username);
             if (resultSet.next()) {
                 return Optional.of(new User(resultSet.getInt("id"), resultSet.getString("username"), resultSet.getString("pass")));
             } else {
@@ -70,6 +72,6 @@ public class DatabaseUsers implements UserCrudService {
 
     @Override
     public boolean findUsername(@NotNull String username) throws SQLException {
-        return Database.checkExists(Database.Tables.USERS, "username = ?", username);
+        return database.checkExists(Database.Tables.USERS, "username = ?", username);
     }
 }
